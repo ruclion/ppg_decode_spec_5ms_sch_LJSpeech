@@ -13,7 +13,7 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 
 from model_torch import DCBHG
-from dataload_ljspeech import ljspeechDtaset
+from dataload_ljspeech import ljspeechDataset
 from audio import hparams as audio_hparams
 from audio import normalized_db_mel2wav, normalized_db_spec2wav, write_wav
 
@@ -23,7 +23,7 @@ hparams = {
     'sample_rate': 16000,
     'preemphasis': 0.97,
     'n_fft': 400,
-    'hop_length': 160,
+    'hop_length': 80,
     'win_length': 400,
     'num_mels': 80,
     'n_mfcc': 13,
@@ -35,29 +35,29 @@ hparams = {
     'griffin_lim_power': 1.5,
     'griffin_lim_iterations': 60,  
     'silence_db': -28.0,
-    'center': False,
+    'center': True,
 }
 
 assert hparams == audio_hparams
 
 
-# 用GPU训练，CPU读数据
 use_cuda = torch.cuda.is_available()
 assert use_cuda is True
 device = torch.device("cuda" if use_cuda else "cpu")
-num_workers = 1
+num_workers = 0
 
 # some super parameters，用epochs来计数，而不是步数（不过两者同时统计）
-BATCH_SIZE = 64
+# BATCH_SIZE = 64
+# BATCH_SIZE = 2
+BATCH_SIZE = 16
 clip_thresh = 0.1
-# BATCH_SIZE = 16
-nepochs=5000,
+nepochs = 5000
 LEARNING_RATE = 0.0003
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
-CKPT_EVERY = 150
+CKPT_EVERY = 300
 
-# ljspeech的log和ckpt文件夹
-ljspeech_log_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'train_and_dev')
+# ljspeech的log: ckpt文件夹以及wav文件夹，tensorboad在wav文件夹中
+ljspeech_log_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'train_wav')
 ljspeech_model_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'ckpt_model')
 if os.path.exists(ljspeech_log_dir) is False:
   os.makedirs(ljspeech_log_dir, exist_ok=True)
@@ -81,9 +81,6 @@ global_epoch = 0
 
 
 def eval_model_generate(spec, spec_pred, length, log_dir, global_step):
-  print("EVAL LENGTH:", length)
-  print("EVAL SPEC PRED SHAPE:", spec_pred.shape)
-  
   y_pred = normalized_db_spec2wav(spec_pred)
   pred_wav_path = os.path.join(log_dir, "checkpoint_step_{}_pred.wav".format(global_step))
   write_wav(pred_wav_path, y_pred)
@@ -91,8 +88,6 @@ def eval_model_generate(spec, spec_pred, length, log_dir, global_step):
   np.save(pred_spec_path, spec_pred)
 
 
-  print("EVAL LENGTH:", length)
-  print("EVAL SPEC SHAPE:", spec.shape)
   y = normalized_db_spec2wav(spec)
   orig_wav_path = os.path.join(log_dir, "checkpoint_step_{}_original.wav".format(global_step))
   write_wav(orig_wav_path, y)
@@ -102,7 +97,7 @@ def eval_model_generate(spec, spec_pred, length, log_dir, global_step):
 
 def main():
   # 数据读入，准备
-  now_dataset = ljspeechDtaset()
+  now_dataset = ljspeechDataset()
   now_torch_dataloader = DataLoader(now_dataset, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=True, drop_last=True)
 
 
@@ -124,10 +119,9 @@ def main():
 
 
   # 开始训练
-  print('开始训练')
+  print('Start Training...')
   global global_step, global_epoch
   model.train()
-
   while global_epoch < nepochs:
       running_loss = 0.0
       for _step, (ppgs, mels, specs, lengths) in tqdm(enumerate(now_torch_dataloader)):
@@ -137,9 +131,7 @@ def main():
           ppgs = ppgs.to(device)
           mels = mels.to(device)
           specs = specs.to(device)
-          print('before type:', type(ppgs), type(mels), type(specs))
           ppgs, mels, specs = Variable(ppgs).float(), Variable(mels).float(), Variable(specs).float()
-          print('after type:', type(ppgs), type(mels), type(specs))
 
 
           # Batch同时计算出pred结果
@@ -153,9 +145,9 @@ def main():
             spec_loss = my_l1_loss(specs_pred[i, :lengths[i], :], specs[i, :lengths[i], :])
             loss += (mel_loss + spec_loss)
           loss = loss / BATCH_SIZE
-          print("Check Loss：", loss)
+          print('Steps', global_step, 'Training Loss：', loss.item())
           writer.add_scalar("loss", float(loss.item()), global_step)
-          running_loss += loss.item() # 计算epoch的平均loss累计值
+          running_loss += loss.item() 
 
 
           # 根据loss，计算梯度，并且应用梯度回传操作，改变权重值
@@ -165,7 +157,7 @@ def main():
           optimizer.step()
 
 
-          # 存储ckpt，并且同样的步数，存储生成的音频
+          # 存储ckpt，存储生成的音频
           if global_step > 0 and global_step % CKPT_EVERY == 0:
             checkpoint_path = os.path.join(ljspeech_model_dir, "checkpoint_step{:09d}.pth".format(global_step))
             torch.save({
@@ -177,10 +169,10 @@ def main():
             eval_model_generate(specs[0].cpu().data.numpy(), specs_pred[0].cpu().data.numpy(), lengths[0], ljspeech_log_dir, global_step)
           
 
-          # BATCH操作结束，step++
+          # 该BATCH操作结束，step++
           global_step += 1
 
-      # 开始对整个epoch进行信息统计
+      # 对整个epoch进行信息统计
       averaged_loss = running_loss / (len(now_torch_dataloader))
       writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)
       global_epoch += 1

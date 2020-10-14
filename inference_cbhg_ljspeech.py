@@ -19,7 +19,7 @@ hparams = {
     'sample_rate': 16000,
     'preemphasis': 0.97,
     'n_fft': 400,
-    'hop_length': 160,
+    'hop_length': 80,
     'win_length': 400,
     'num_mels': 80,
     'n_mfcc': 13,
@@ -31,21 +31,23 @@ hparams = {
     'griffin_lim_power': 1.5,
     'griffin_lim_iterations': 60,  
     'silence_db': -28.0,
-    'center': False,
+    'center': True,
 }
+
 
 assert hparams == audio_hparams
 
-# 用GPU预测
+
 use_cuda = torch.cuda.is_available()
 assert use_cuda is True
 
+
 # 超参数和路径
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
-ckpt_path_ljspeech = './checkpoints-dblstm/with_l1_loss_500/checkpoint_step000010050.pth'
+ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/ljspeech_log_dir/2020-10-14T16-38-13/ckpt_model/checkpoint_step000001800.pth'
 
-ppgs_paths = 'syn_ppgs.txt'
-ljspeech_log_dir = os.path.join('predict_ljspeech_log_dir', STARTED_DATESTRING)
+ppgs_paths = 'inference_ppgs_path_list.txt'
+ljspeech_log_dir = os.path.join('inference_ljspeech_log_dir', STARTED_DATESTRING)
 if os.path.exists(ljspeech_log_dir) is False:
     os.makedirs(ljspeech_log_dir, exist_ok=True)
 
@@ -64,6 +66,9 @@ def tts_load(model, ckpt_path):
 def tts_predict(model, ppg):
     # 准备输入的数据并转换到GPU
     ppg = Variable(torch.from_numpy(ppg)).unsqueeze(0).float()
+    print(ppg.size())
+    print(ppg.shape)
+    print(ppg.type())
     if use_cuda:
         ppg = ppg.cuda()
 
@@ -80,7 +85,7 @@ def tts_predict(model, ppg):
 
 
 def draw_spec(a_path, a):
-    plt.imshow(a.T[:1000, :], cmap='hot', interpolation='nearest')
+    plt.imshow(a.T, cmap='hot', interpolation='nearest')
     plt.xlabel('frame nums')
     plt.ylabel('spec')
     plt.tight_layout()

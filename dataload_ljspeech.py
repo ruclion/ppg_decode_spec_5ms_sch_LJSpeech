@@ -4,13 +4,12 @@ from torch.utils.data import Dataset
 
 
 
-TRAIN_FILE = './LibriSpeech/meta.txt'
+TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good.txt'
 # TEST_FILE = './LibriSpeech/test_diff_meta_960.txt'
-MFCC_DIR =  './LibriSpeech/MFCCs'
-PPG_DIR =   './LibriSpeech/PPGs'
-MEL_DIR =  './LibriSpeech/MELs'
-SPEC_DIR =  './LibriSpeech/SPECs'
-max_length = 1000
+PPG_DIR =   '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/ppg_from_generate_batch'
+MEL_DIR =  '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/mel_5ms_by_audio_2'
+SPEC_DIR =  '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/spec_5ms_by_audio_2'
+max_length = 1200
 PPG_DIM = 345
 MEL_DIM = 80
 SPEC_DIM = 201
@@ -21,14 +20,12 @@ def text2list_ljspeech(file):
     file_list = []
     with open(file, 'r') as f:
         for line in f:
-            file_list.append(line.split('|')[0])
+            file_list.append(line.strip().split('|')[0])
     return file_list
 
 
 def get_single_data_pair(fname, ppg_dir, mel_dir, spec_dir):
-    assert os.path.isdir(ppg_dir) and os.path.isdir(mel_dir) and os.path.isdir(spec_dir)
-
-    ppg_f = os.path.join(ppg_dir, fname+'.npy')#os.path.join(ppg_dir, fname+'.npy')
+    ppg_f = os.path.join(ppg_dir, fname+'.npy')
     mel_f = os.path.join(mel_dir, fname+'.npy')
     spec_f = os.path.join(spec_dir, fname+'.npy')
 
@@ -40,27 +37,24 @@ def get_single_data_pair(fname, ppg_dir, mel_dir, spec_dir):
     return ppg, mel, spec
 
 
-class ljspeechDtaset(Dataset):
+class ljspeechDataset(Dataset):
   def __init__(self):
     self.file_list = text2list_ljspeech(file=TRAIN_FILE)
-    # 先沿用长河的，所有batch的序列均padding为10000
+    # 先延用长河的，所有batch的序列均padding为2000
     self.max_length = max_length
 
   # 不知道用处，可能是语法，先留着
-  # def __len__(self):
-  #   assert (len(self.ppgs) == len(self.mels))
-  #   assert (len(self.ppgs) == len(self.specs))
-  #   return len(self.ppgs)
+  def __len__(self):
+    return len(self.file_list)
   
   def __getitem__(self, idx):
     fname = self.file_list[idx]
-    ppg, mel, spec = get_single_data_pair(fname, ppg_dir, mel_dir, spec_dir)
+    ppg, mel, spec = get_single_data_pair(fname, PPG_DIR, MEL_DIR, SPEC_DIR)
     ppg_len = ppg.shape[0]
-    print('CHECK ppg_len:', ppg_len)
 
-    # 为什么长河会有这句代码，先放着以供讨论，注释掉
-    # if ppg_len > mel_len:
-    #     ppg = ppg[:mel_len, :]
+    # if ppg_len > self.max_length:
+    #     assert False
+
 
 
     # 此部分先没改
@@ -70,7 +64,7 @@ class ljspeechDtaset(Dataset):
       mel_padded = np.vstack((mel, np.zeros((pad_length, MEL_DIM))))
       spec_padded = np.vstack((spec, np.zeros((pad_length, SPEC_DIM))))
     else:
-      print("BIGGER")
+      # print("BIGGER")
       ppg_padded = ppg[:self.max_length, :]
       mel_padded = mel[:self.max_length, :]
       spec_padded = spec[:self.max_length, :]

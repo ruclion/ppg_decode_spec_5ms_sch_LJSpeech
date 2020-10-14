@@ -1,24 +1,26 @@
-from torch.autograd import Variable
-import torch.nn.functional as F
-import torch.nn as nn
-import torch
-
-from collections import OrderedDict
-from tqdm import tqdm
 import numpy as np
+from tqdm import tqdm
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from collections import OrderedDict
+from torch.autograd import Variable
 
 
 
-hparams = tf.contrib.training.HParams(
-    phn_num = 345,
-    n_mels = 80,
-    spec_dim=201,
 
-    hidden_units=256,
-    hidden_dim_before_second_cbhg_div2=256,
-)
+
+
+# 超参数个数：5
+hparams = {
+    'phn_num': 345,
+    'n_mels' : 80,
+    'spec_dim' : 201,
+
+    'hidden_units' : 256,
+    'hidden_dim_before_second_cbhg_div2' : 256,
+}
 
 use_cuda = torch.cuda.is_available()
 
@@ -247,16 +249,16 @@ class CBHG(nn.Module):
 class DCBHG(nn.Module):
   def __init__(self):
     super(DCBHG, self).__init__()
-    self.input_dim = hparams.phn_num
-    self.hidden_dim_before_second_cbhg_div2 = hparams.hidden_dim_before_second_cbhg_div2
+    self.input_dim_phn = hparams['phn_num']
+    # self.hidden_dim_before_second_cbhg_div2 = hparams['hidden_dim_before_second_cbhg_div2']
 
-    self.prenet = Prenet(self.input_dim, hparams.hidden_units, hparams.hidden_units // 2)
-    self.cbhg1 = CBHG(hparams.hidden_units)
-    self.linear1 = nn.Linear(hparams.hidden_units * 2, hparams.n_mels)
+    self.prenet = Prenet(self.input_dim_phn, hparams['hidden_units'], hparams['hidden_units'] // 2)
+    self.cbhg1 = CBHG(hparams['hidden_units'])
+    self.linear1 = nn.Linear(hparams['hidden_units'] * 2, hparams['n_mels'])
 
-    self.linear2 = nn.Linear(hparams.n_mels, self.hidden_dim_before_second_cbhg_div2 // 2)
-    self.cbhg2 = CBHG(hparams.hidden_units)
-    self.linear3 = nn.Linear(hparams.hidden_units * 2, hparams.spec_dim)
+    self.linear2 = nn.Linear(hparams['n_mels'], hparams['hidden_dim_before_second_cbhg_div2'] // 2)
+    self.cbhg2 = CBHG(hparams['hidden_units'])
+    self.linear3 = nn.Linear(hparams['hidden_units'] * 2, hparams['spec_dim'])
 
 
 

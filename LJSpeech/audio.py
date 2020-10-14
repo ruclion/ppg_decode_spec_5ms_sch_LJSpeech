@@ -4,10 +4,9 @@
 # Griffinlim超参数临时使用1.2和80，区别在哪里？
 # 取log的时候，浮点数（power值）统一加上了1e-5
 # min_db没有详细统计，直接用的-80
-# 户建坤-hujk17为了理解长河10ms版本cbhg-ppg代码进行了一次梳理，抄写的。2020-9-30-21-01
+# 户建坤-hujk17为了理解长河10ms版本cbhg-ppg代码进行了一次梳理，抄写的。2020-10-14-16-13
 
 import librosa
-import tensorflow as tf
 import numpy as np
 from scipy.io import wavfile
 from scipy import signal
