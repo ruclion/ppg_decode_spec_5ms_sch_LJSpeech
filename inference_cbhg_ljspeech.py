@@ -44,7 +44,7 @@ assert use_cuda is True
 
 # 超参数和路径
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
-ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/ljspeech_log_dir/2020-10-14T16-38-13/ckpt_model/checkpoint_step000001800.pth'
+ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/ljspeech_log_dir/2020-10-14T16-38-13/ckpt_model/checkpoint_step000018300.pth'
 
 ppgs_paths = 'inference_ppgs_path_list.txt'
 ljspeech_log_dir = os.path.join('inference_ljspeech_log_dir', STARTED_DATESTRING)

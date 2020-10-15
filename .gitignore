@@ -2,3 +2,4 @@
 inference_ljspeech_log_dir/
 ljspeech_log_dir/
 const_ckpt_dir/
+restoreANDvalitation_ljspeech_log_dir/

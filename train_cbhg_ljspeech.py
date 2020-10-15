@@ -44,7 +44,7 @@ TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_train.txt
 VALIDATION_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_validation.txt'
 # 注意是否要借鉴已经有的模型
 # restore_ckpt_path_ljspeech = None
-restore_ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/const_ckpt_dir/ckpt_model/checkpoint_step000018300.pth'
+restore_ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/const_ckpt_dir/checkpoint_step000018300.pth'
 
 
 use_cuda = torch.cuda.is_available()
@@ -61,7 +61,9 @@ nepochs = 5000
 LEARNING_RATE = 0.0003
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 CKPT_EVERY = 300
+# CKPT_EVERY = 2
 VALIDATION_EVERY = 600
+# VALIDATION_EVERY = 2
 
 # ljspeech的log: ckpt文件夹以及wav文件夹，tensorboad在wav文件夹中
 ljspeech_log_dir = os.path.join('restoreANDvalitation_ljspeech_log_dir', STARTED_DATESTRING, 'train_wav')
@@ -88,6 +90,7 @@ def load_checkpoint(checkpoint_path, model, optimizer):
 
 
 def validate(model, criterion, validation_torch_loader, now_steps, writer):
+  print('Start validation...')
   model.eval()
   with torch.no_grad():
     val_loss = 0.0
@@ -101,7 +104,8 @@ def validate(model, criterion, validation_torch_loader, now_steps, writer):
       mels_pred, specs_pred = model(ppgs)
       # 根据预测结果定义/计算loss
       loss = 0.0
-      for i in range(BATCH_SIZE):
+      # print('now validation batch size:', lengths.shape[0])
+      for i in range(lengths.shape[0]):
         mel_loss = criterion(mels_pred[i, :lengths[i], :], mels[i, :lengths[i], :])
         spec_loss = criterion(specs_pred[i, :lengths[i], :], specs[i, :lengths[i], :])
         loss += (mel_loss + spec_loss)
@@ -111,28 +115,30 @@ def validate(model, criterion, validation_torch_loader, now_steps, writer):
 
     # 计算验证集整体loss，然后画出来
     val_loss /= (len(validation_torch_loader))
-    writer.add_scalar("validation loss", val_loss, now_steps)
+    # writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)
+    writer.add_scalar("validation_loss", val_loss, now_steps)
     # 合成声音
     id = 0
-    generate_pair_wav(specs[id, lengths[id], :].cpu().data.numpy(), specs_pred[id, lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, global_step)
-    id = BATCH_SIZE - 1
-    generate_pair_wav(specs[id, lengths[id], :].cpu().data.numpy(), specs_pred[id, lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, global_step)
+    generate_pair_wav(specs[id, :lengths[id], :].cpu().data.numpy(), specs_pred[id, :lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, now_steps, suffix_name='first')
+    id = lengths.shape[0] - 1
+    generate_pair_wav(specs[id, :lengths[id], :].cpu().data.numpy(), specs_pred[id, :lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, now_steps, suffix_name='last')
 
   model.train()
+  print('Validation loss:', val_loss)
 
 
-def generate_pair_wav(spec, spec_pred, log_dir, global_step):
+def generate_pair_wav(spec, spec_pred, log_dir, global_step, suffix_name):
   y_pred = normalized_db_spec2wav(spec_pred)
-  pred_wav_path = os.path.join(log_dir, "validation_step_{}_pred.wav".format(global_step))
+  pred_wav_path = os.path.join(log_dir, "step_" + str(global_step) + "_" + suffix_name + "_predvalidation.wav")
   write_wav(pred_wav_path, y_pred)
-  pred_spec_path = os.path.join(log_dir, "validation_step_{}_pred_spec.npy".format(global_step))
+  pred_spec_path = os.path.join(log_dir, "step_" + str(global_step) + "_" + suffix_name + "_predvalidation.npy")
   np.save(pred_spec_path, spec_pred)
 
 
   y = normalized_db_spec2wav(spec)
-  orig_wav_path = os.path.join(log_dir, "validation_step_{}_original.wav".format(global_step))
+  orig_wav_path = os.path.join(log_dir, "step_" + str(global_step) + "_" + suffix_name + "_original.wav")
   write_wav(orig_wav_path, y)
-  orig_spec_path = os.path.join(log_dir, "validation_step_{}_orig_spec.npy".format(global_step))
+  orig_spec_path = os.path.join(log_dir, "step_" + str(global_step) + "_" + suffix_name + "_original.npy")
   np.save(orig_spec_path, spec)
 
 
@@ -142,7 +148,7 @@ def main():
   now_train_torch_dataloader = DataLoader(now_dataset_train, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=True, drop_last=True)
 
   now_dataset_validation = ljspeechDataset(VALIDATION_FILE)
-  now_validation_torch_loader = DataLoader(now_dataset_validation, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=False)
+  now_validation_torch_loader = DataLoader(now_dataset_validation, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=True)
   
   
   # 构建模型，放在gpu上，顺便把tensorboard的图的记录变量操作也算在这里面
@@ -231,7 +237,7 @@ def main():
 
       # 对整个epoch进行信息统计
       averaged_loss = running_loss / (len(now_train_torch_dataloader))
-      writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)
+      writer.add_scalar("loss_per_epoch)", averaged_loss, global_epoch)
       global_epoch += 1
 
 
