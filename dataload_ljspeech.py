@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 
 
 
-TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good.txt'
+# TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good.txt'
 # TEST_FILE = './LibriSpeech/test_diff_meta_960.txt'
 PPG_DIR =   '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/ppg_from_generate_batch'
 MEL_DIR =  '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/mel_5ms_by_audio_2'
@@ -38,8 +38,8 @@ def get_single_data_pair(fname, ppg_dir, mel_dir, spec_dir):
 
 
 class ljspeechDataset(Dataset):
-  def __init__(self):
-    self.file_list = text2list_ljspeech(file=TRAIN_FILE)
+  def __init__(self, meta_list_path):
+    self.file_list = text2list_ljspeech(file=meta_list_path)
     # 先延用长河的，所有batch的序列均padding为2000
     self.max_length = max_length
 

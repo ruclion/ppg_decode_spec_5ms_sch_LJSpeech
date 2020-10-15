@@ -40,6 +40,9 @@ hparams = {
 
 assert hparams == audio_hparams
 
+TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_train.txt'
+VALIDATION_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_validation.txt'
+
 
 use_cuda = torch.cuda.is_available()
 assert use_cuda is True
@@ -55,6 +58,7 @@ nepochs = 5000
 LEARNING_RATE = 0.0003
 STARTED_DATESTRING = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
 CKPT_EVERY = 300
+VALIDATION_EVERY = 600
 
 # ljspeech的log: ckpt文件夹以及wav文件夹，tensorboad在wav文件夹中
 ljspeech_log_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'train_wav')
@@ -80,27 +84,64 @@ global_epoch = 0
 #   return model
 
 
-def eval_model_generate(spec, spec_pred, length, log_dir, global_step):
+def validate(model, criterion, validation_torch_loader, now_steps, writer):
+  model.eval()
+  with torch.no_grad():
+    val_loss = 0.0
+    for _step, (ppgs, mels, specs, lengths) in tqdm(enumerate(validation_torch_loader)):
+      # 数据拿到GPU上
+      ppgs = ppgs.to(device)
+      mels = mels.to(device)
+      specs = specs.to(device)
+      ppgs, mels, specs = Variable(ppgs).float(), Variable(mels).float(), Variable(specs).float()
+      # Batch同时计算出pred结果
+      mels_pred, specs_pred = model(ppgs)
+      # 根据预测结果定义/计算loss
+      loss = 0.0
+      for i in range(BATCH_SIZE):
+        mel_loss = criterion(mels_pred[i, :lengths[i], :], mels[i, :lengths[i], :])
+        spec_loss = criterion(specs_pred[i, :lengths[i], :], specs[i, :lengths[i], :])
+        loss += (mel_loss + spec_loss)
+
+      loss = loss / BATCH_SIZE
+      val_loss += loss.item() 
+
+    # 计算验证集整体loss，然后画出来
+    val_loss /= (len(validation_torch_loader))
+    writer.add_scalar("validation loss", val_loss, now_steps)
+    # 合成声音
+    id = 0
+    generate_pair_wav(specs[id, lengths[id], :].cpu().data.numpy(), specs_pred[id, lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, global_step)
+    id = BATCH_SIZE - 1
+    generate_pair_wav(specs[id, lengths[id], :].cpu().data.numpy(), specs_pred[id, lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, global_step)
+
+  model.train()
+
+
+def generate_pair_wav(spec, spec_pred, log_dir, global_step):
   y_pred = normalized_db_spec2wav(spec_pred)
-  pred_wav_path = os.path.join(log_dir, "checkpoint_step_{}_pred.wav".format(global_step))
+  pred_wav_path = os.path.join(log_dir, "validation_step_{}_pred.wav".format(global_step))
   write_wav(pred_wav_path, y_pred)
-  pred_spec_path = os.path.join(log_dir, "checkpoint_step_{}_pred_spec.npy".format(global_step))
+  pred_spec_path = os.path.join(log_dir, "validation_step_{}_pred_spec.npy".format(global_step))
   np.save(pred_spec_path, spec_pred)
 
 
   y = normalized_db_spec2wav(spec)
-  orig_wav_path = os.path.join(log_dir, "checkpoint_step_{}_original.wav".format(global_step))
+  orig_wav_path = os.path.join(log_dir, "validation_step_{}_original.wav".format(global_step))
   write_wav(orig_wav_path, y)
-  orig_spec_path = os.path.join(log_dir, "checkpoint_step_{}_orig_spec.npy".format(global_step))
+  orig_spec_path = os.path.join(log_dir, "validation_step_{}_orig_spec.npy".format(global_step))
   np.save(orig_spec_path, spec)
 
 
 def main():
   # 数据读入，准备
-  now_dataset = ljspeechDataset()
-  now_torch_dataloader = DataLoader(now_dataset, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=True, drop_last=True)
+  now_dataset_train = ljspeechDataset(TRAIN_FILE)
+  now_train_torch_dataloader = DataLoader(now_dataset_train, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=True, drop_last=True)
 
-
+  now_dataset_validation = ljspeechDataset(VALIDATION_FILE)
+  now_validation_torch_loader = DataLoader(now_dataset_validation, batch_size=BATCH_SIZE, num_workers=num_workers, shuffle=False)
+  
+  
   # 构建模型，放在gpu上，顺便把tensorboard的图的记录变量操作也算在这里面
   model = DCBHG().to(device)
   writer = SummaryWriter(log_dir=ljspeech_log_dir)
@@ -124,7 +165,7 @@ def main():
   model.train()
   while global_epoch < nepochs:
       running_loss = 0.0
-      for _step, (ppgs, mels, specs, lengths) in tqdm(enumerate(now_torch_dataloader)):
+      for _step, (ppgs, mels, specs, lengths) in tqdm(enumerate(now_train_torch_dataloader)):
           # Batch开始训练，清空opt，数据拿到GPU上
           optimizer.zero_grad()
 
@@ -166,14 +207,16 @@ def main():
                 "global_step": global_step,
                 "global_epoch": global_epoch,
             }, checkpoint_path)
-            eval_model_generate(specs[0].cpu().data.numpy(), specs_pred[0].cpu().data.numpy(), lengths[0], ljspeech_log_dir, global_step)
-          
+            
+          # 测试集的效果，很重道，不过均在这一个函数中实现了
+          if global_step > 0 and global_step % VALIDATION_EVERY == 0:
+            validate(model=model, criterion=my_l1_loss, validation_torch_loader=now_validation_torch_loader, now_steps=global_step, writer=writer)
 
           # 该BATCH操作结束，step++
           global_step += 1
 
       # 对整个epoch进行信息统计
-      averaged_loss = running_loss / (len(now_torch_dataloader))
+      averaged_loss = running_loss / (len(now_train_torch_dataloader))
       writer.add_scalar("loss (per epoch)", averaged_loss, global_epoch)
       global_epoch += 1
 
