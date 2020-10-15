@@ -124,7 +124,7 @@ def validate(model, criterion, validation_torch_loader, now_steps, writer):
     generate_pair_wav(specs[id, :lengths[id], :].cpu().data.numpy(), specs_pred[id, :lengths[id], :].cpu().data.numpy(), ljspeech_log_dir, now_steps, suffix_name='last')
 
   model.train()
-  print('Validation loss:', val_loss)
+  print('ValidationLoss:', val_loss)
 
 
 def generate_pair_wav(spec, spec_pred, log_dir, global_step, suffix_name):
@@ -237,7 +237,7 @@ def main():
 
       # 对整个epoch进行信息统计
       averaged_loss = running_loss / (len(now_train_torch_dataloader))
-      writer.add_scalar("loss_per_epoch)", averaged_loss, global_epoch)
+      writer.add_scalar('epochLoss', averaged_loss, global_epoch)
       global_epoch += 1
 
 
