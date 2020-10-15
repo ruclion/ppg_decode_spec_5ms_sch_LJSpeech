@@ -42,6 +42,9 @@ assert hparams == audio_hparams
 
 TRAIN_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_train.txt'
 VALIDATION_FILE = '/datapool/home/hujk17/chenxueyuan/LJSpeech-1.1/meta_good_validation.txt'
+# 注意是否要借鉴已经有的模型
+# restore_ckpt_path_ljspeech = None
+restore_ckpt_path_ljspeech = '/datapool/home/hujk17/ppg_decode_spec_5ms_sch_LJSpeech/const_ckpt_dir/ckpt_model/checkpoint_step000018300.pth'
 
 
 use_cuda = torch.cuda.is_available()
@@ -61,27 +64,27 @@ CKPT_EVERY = 300
 VALIDATION_EVERY = 600
 
 # ljspeech的log: ckpt文件夹以及wav文件夹，tensorboad在wav文件夹中
-ljspeech_log_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'train_wav')
-ljspeech_model_dir = os.path.join('ljspeech_log_dir', STARTED_DATESTRING, 'ckpt_model')
+ljspeech_log_dir = os.path.join('restoreANDvalitation_ljspeech_log_dir', STARTED_DATESTRING, 'train_wav')
+ljspeech_model_dir = os.path.join('restoreANDvalitation_ljspeech_log_dir', STARTED_DATESTRING, 'ckpt_model')
 if os.path.exists(ljspeech_log_dir) is False:
   os.makedirs(ljspeech_log_dir, exist_ok=True)
 if os.path.exists(ljspeech_model_dir) is False:
   os.makedirs(ljspeech_model_dir, exist_ok=True)
 
 
-# 计数全局变量
-global_step = 0
-global_epoch = 0
 
+# 恢复训练，需要测试对不对，特别是loss是不是接着下降的
+def load_checkpoint(checkpoint_path, model, optimizer):
+  assert os.path.isfile(checkpoint_path)
+  print("Loading checkpoint '{}'".format(checkpoint_path))
 
-
-# 恢复训练，还没写完，不能用 TODO
-# def load_model(model, ckpt_path):
-#   global_step
-#   global_epch
-#   ckpt_checkpoint_load = torch.load(ckpt_path)
-#   model.load_state_dict(ckpt_checkpoint_load["state_dict"])
-#   return model
+  checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
+  model.load_state_dict(checkpoint_dict['state_dict'])
+  optimizer.load_state_dict(checkpoint_dict['optimizer'])
+  global_step = checkpoint_dict['global_step']
+  global_epoch = checkpoint_dict['global_epoch']
+  print("Loaded checkpoint '{}' from iteration {}" .format(checkpoint_path, global_step))
+  return model, optimizer, global_step, global_epoch
 
 
 def validate(model, criterion, validation_torch_loader, now_steps, writer):
@@ -149,6 +152,14 @@ def main():
 
   # 设置梯度回传优化器，目前使用固定lr=0.0003，不知用不用变lr
   optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+
+  global_step = 0
+  global_epoch = 0
+  if restore_ckpt_path_ljspeech is not None:
+    model, optimizer, _step, _epoch = load_checkpoint(restore_ckpt_path_ljspeech, model, optimizer)
+    global_step = _step
+    global_epoch = _epoch
   
 
   # optimize classification
@@ -159,9 +170,12 @@ def main():
   my_l1_loss = nn.L1Loss()
 
 
+  
+
+
   # 开始训练
   print('Start Training...')
-  global global_step, global_epoch
+  
   model.train()
   while global_epoch < nepochs:
       running_loss = 0.0
